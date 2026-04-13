@@ -1,0 +1,24 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Python virtual environment
+venv/
+.env
+
+# ML model files
+*.pth
+*.pt
+checkpoints/
+
+# Flutter build files
+build/
+.dart_tool/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

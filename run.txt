@@ -1,0 +1,14 @@
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+http://localhost:8000/health
+
+cd flutter_app
+flutter pub get
+flutter run
+
+map api : AIzaSyAjke8r2nyK1lDAM88W27uy4juitUPvRSI
+supabaseUrl = https://umuqhnzqutumhuykuiwc.supabase.co
+supabaseAnonKey = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtdXFobnpxdXR1bWh1eWt1aXdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5NTI4ODEsImV4cCI6MjA5MDUyODg4MX0.YfgVuhc3u1cI8BK2xAgw_s5b-wImt1FStemLERDrr8U
+aiWorkerUrl = http://127.0.0.1:8000
+
+citizen@fixmyroad.com
+Test@12345
