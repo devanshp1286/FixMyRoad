@@ -5,9 +5,20 @@ class AppConstants {
   static const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtdXFobnpxdXR1bWh1eWt1aXdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5NTI4ODEsImV4cCI6MjA5MDUyODg4MX0.YfgVuhc3u1cI8BK2xAgw_s5b-wImt1FStemLERDrr8U';
 
   // ── FastAPI AI Worker ─────────────────────────────────────────────────────
-  // 10.0.2.2 = your PC's localhost from Android emulator
-  // If using real phone: replace with your PC's local IP e.g. 192.168.1.x
-  static const aiWorkerUrl = 'http://10.88.225.19:8000';
+  // IMPORTANT: Update this URL based on your environment:
+  //
+  // For phone connecting to laptop on same WiFi:
+  //   - Use your LAPTOP'S IPv4 address from ipconfig
+  //
+  // For local development on Windows (your PC):
+  //   - Windows desktop/emulator: http://127.0.0.1:8000
+  //   - Emulator: http://10.0.2.2:8000 (Android emulator accesses host via 10.0.2.2)
+  //
+  // For remote server:
+  //   - Replace with your server IP/domain: http://your-server-ip:8000
+  //
+  // Current setting for PHONE + LAPTOP development (Laptop IPv4: 10.183.62.19):
+  static const aiWorkerUrl = 'http://10.183.62.19:8000';
 
   // ── Google Maps ───────────────────────────────────────────────────────────
   static const googleMapsApiKey = 'AIzaSyAjke8r2nyK1lDAM88W27uy4juitUPvRSI';

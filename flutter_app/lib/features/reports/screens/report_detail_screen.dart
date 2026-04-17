@@ -20,23 +20,31 @@ class ReportDetailScreen extends ConsumerStatefulWidget {
 class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
   Report? _report;
   List<StatusHistory> _history = [];
-  bool _loading     = true;
-  bool _hasUpvoted  = false;
-  bool _upvoting    = false;
+  Profile? _userProfile;
+  bool _loading      = true;
+  bool _hasUpvoted   = false;
+  bool _upvoting     = false;
+  RealtimeChannel?   _channel;
 
   String _severityDescription(String severity) {
-  switch (severity) {
+  switch (severity.toLowerCase()) {
     case 'critical':
       return 'Severe damage requiring immediate repair to ensure safety.';
     case 'deep':
-      return 'Significant pothole that poses a risk to vehicles and cyclists.';
+      return 'Significant pothole that poses a risk to vehicles and pedestrians.';
     case 'moderate':
       return 'Moderate damage that should be scheduled for repair soon.';
     case 'shallow':
     default:
-      return 'Minor surface damage. Monitor and repair when convenient.';
+      return 'Minor surface damage. Monitor and repair during routine maintenance.';
   }
 }
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -50,15 +58,24 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
       final report  = await service.getReport(widget.reportId);
       final history = await service.getStatusHistory(widget.reportId);
       final upvoted = await service.hasUpvoted(widget.reportId);
+      
+      // Load current user profile for role check
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      Profile? userProfile;
+      if (uid != null) {
+        userProfile = await service.getProfile(uid);
+      }
+      
       if (mounted) {
         setState(() {
-          _report     = report;
-          _history    = history;
-          _hasUpvoted = upvoted;
-          _loading    = false;
+          _report       = report;
+          _history      = history;
+          _hasUpvoted   = upvoted;
+          _userProfile  = userProfile;
+          _loading      = false;
         });
       }
-      service.subscribeToReport(widget.reportId, (updated) {
+      _channel = service.subscribeToReport(widget.reportId, (updated) {
         if (mounted) _load();
       });
     } catch (e) {
@@ -213,10 +230,9 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                       ),
                       // Engineers and admins also see technical metrics
                       Builder(builder: (context) {
-                        final uid = Supabase.instance.client.auth.currentUser?.id;
-                        // Check if user is engineer or admin via profile role
-                        final isPrivileged = r.engineer?.id == uid ||
-                            r.assignedTo == uid;
+                        // Check if user is engineer or admin based on their profile role
+                        final isPrivileged = _userProfile?.isEngineer == true || 
+                                            _userProfile?.isAdmin == true;
                         if (!isPrivileged) return const SizedBox.shrink();
                         return Column(children: [
                           const Divider(height: 20),

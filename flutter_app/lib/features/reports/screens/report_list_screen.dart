@@ -15,6 +15,7 @@ class ReportListScreen extends ConsumerStatefulWidget {
 
 class _ReportListScreenState extends ConsumerState<ReportListScreen> {
   List<Report> _reports   = [];
+  Profile? _userProfile;
   bool         _loading   = true;
   bool         _hasError  = false;
   RealtimeChannel? _channel;  
@@ -39,8 +40,23 @@ class _ReportListScreenState extends ConsumerState<ReportListScreen> {
     if (!mounted) return;
     setState(() { _loading = true; _hasError = false; });
     try {
-      final reports = await ref.read(supabaseServiceProvider).getMyReports();
-      if (mounted) setState(() { _reports = reports; _loading = false; });
+      final service = ref.read(supabaseServiceProvider);
+      final reports = await service.getMyReports();
+      
+      // Load user profile for role check
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      Profile? userProfile;
+      if (uid != null) {
+        userProfile = await service.getProfile(uid);
+      }
+      
+      if (mounted) {
+        setState(() { 
+          _reports = reports;
+          _userProfile = userProfile;
+          _loading = false; 
+        });
+      }
     } catch (e) {
       if (mounted) setState(() { _loading = false; _hasError = true; });
     }
@@ -89,6 +105,8 @@ class _ReportListScreenState extends ConsumerState<ReportListScreen> {
                           report: _reports[i],
                           onTap: () =>
                               context.push('/reports/${_reports[i].id}'),
+                          showCost: _userProfile?.isEngineer == true || 
+                                    _userProfile?.isAdmin == true,
                         ),
                       ),
                     ),

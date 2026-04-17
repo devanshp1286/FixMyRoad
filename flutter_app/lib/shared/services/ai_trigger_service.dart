@@ -5,6 +5,29 @@ import 'package:flutter/foundation.dart';
 import '../../core/constants.dart';
 
 class AiTriggerService {
+  /// Check if AI worker is online
+  static Future<bool> checkHealth() async {
+    try {
+      debugPrint('[AI Health] Checking AI worker at: ${AppConstants.aiWorkerUrl}/health');
+      final response = await http.get(
+        Uri.parse('${AppConstants.aiWorkerUrl}/health'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        debugPrint('[AI Health] ✓ AI worker is online');
+        debugPrint('[AI Health] Response: ${response.body}');
+        return true;
+      } else {
+        debugPrint('[AI Health] ✗ AI worker returned status ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('[AI Health] ✗ Cannot reach AI worker: $e');
+      debugPrint('[AI Health] URL: ${AppConstants.aiWorkerUrl}');
+      return false;
+    }
+  }
+
   /// Calls the FastAPI AI worker directly from Flutter.
   static Future<bool> triggerAnalysis({
     required String reportId,

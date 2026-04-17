@@ -84,10 +84,8 @@ async def analyze(req: AnalyzeRequest):
     severity   = results.get("severity")
     area_px    = results.get("pothole_area_px")
     rel_depth  = results.get("relative_depth")
-    cost_range = estimate_cost(severity)
     materials  = estimate_materials(severity, area_px, rel_depth)
 
-    print(f"[AI] Cost estimate: {cost_range}")
     print(f"[AI] Materials: {materials}")
 
     # 4. Upload output images
@@ -118,8 +116,8 @@ async def analyze(req: AnalyzeRequest):
         "severity":          severity,
         "pothole_area_px":   area_px,
         "confidence":        results.get("confidence"),
-        "repair_cost_min":   cost_range["min"],
-        "repair_cost_max":   cost_range["max"],
+        "repair_cost_min":   materials.get("cost_min"),
+        "repair_cost_max":   materials.get("cost_max"),
         "asphalt_kg":        materials["asphalt_kg"],
         "labour_hours":      materials["labour_hours"],
         "material_cost_est": materials["material_cost_est"],
@@ -173,7 +171,10 @@ async def analyze(req: AnalyzeRequest):
         print(f"[AI] Status update error (non-critical): {e}")
 
     print(f"[AI] Done in {processing_time:.1f}s")
-    return AnalyzeResponse(**{**ai_row, "processing_time_s": processing_time})
+    # Strip keys not in AnalyzeResponse before returning
+    response_data = {k: v for k, v in {**ai_row, "processing_time_s": processing_time}.items()
+                     if k != "used_fallback"}
+    return AnalyzeResponse(**response_data)
 
 @app.post("/generate-pdf")
 async def generate_pdf(req: PdfRequest):
@@ -200,3 +201,9 @@ def get_results(report_id: str):
     if not data.data:
         raise HTTPException(status_code=404, detail="Results not found")
     return data.data
+
+
+if __name__ == "__main__":
+    import uvicorn
+    # Listen on ALL network interfaces (0.0.0.0) so phone can connect via laptop's IP
+    uvicorn.run(app, host="0.0.0.0", port=8000)

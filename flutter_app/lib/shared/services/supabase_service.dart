@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -156,14 +157,17 @@ class SupabaseService {
     // 1. Upload image to Supabase Storage
     final fileName =
         '${currentUser!.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+    print('[Report] Uploading image to: $fileName');
     await _client.storage
         .from(AppConstants.bucketPotholeImages)
         .upload(fileName, imageFile);
     final imageUrl = _client.storage
         .from(AppConstants.bucketPotholeImages)
         .getPublicUrl(fileName);
+    print('[Report] Image uploaded. URL: $imageUrl');
 
     // 2. Insert report
+    print('[Report] Inserting report into Supabase...');
     final data = await _client.from('reports').insert({
       'citizen_id': currentUser!.id,
       'image_url': imageUrl,
@@ -174,8 +178,11 @@ class SupabaseService {
     }).select().single();
 
     final reportId = data['id'] as String;
+    print('[Report] ✓ Report created with ID: $reportId');
+    print('[Report] Status in database: ${data['status']}');
 
-    // 3. Directly call AI worker (no Edge Function needed)
+    // 3. Directly call AI worker (fire and forget - doesn't block UI)
+    print('[Report] Triggering AI analysis in background...');
     _callAiWorker(reportId, imageUrl);
 
     return reportId;
@@ -184,22 +191,64 @@ class SupabaseService {
   // Fire and forget — does not block the UI
   Future<void> _callAiWorker(String reportId, String imageUrl) async {
     try {
-      final response = await http.post(
-        Uri.parse('${AppConstants.aiWorkerUrl}/analyze'),
+      final startTime = DateTime.now();
+      print('[AI Worker] ═══════════════════════════════════════════════════════');
+      print('[AI Worker] Calling AI worker...');
+      print('[AI Worker] URL: ${AppConstants.aiWorkerUrl}/analyze');
+      print('[AI Worker] Report ID: $reportId');
+      print('[AI Worker] Image URL: $imageUrl');
+      print('[AI Worker] ═══════════════════════════════════════════════════════');
+      
+      final uri = Uri.parse('${AppConstants.aiWorkerUrl}/analyze');
+      print('[AI Worker] [T:0s] Creating HTTP request...');
+      
+      final request = http.post(
+        uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'report_id': reportId,
           'image_url': imageUrl,
         }),
-      ).timeout(const Duration(seconds: 120));
+      ).timeout(const Duration(seconds: 60), onTimeout: () {
+        print('[AI Worker] [TIMEOUT] Request timed out after 60 seconds');
+        throw TimeoutException('AI worker did not respond within 60 seconds');
+      });
 
-      if (response.statusCode != 200) {
-        print('[AI Worker] Error: ${response.body}');
+      print('[AI Worker] [T:0s] Sending request to ${uri.host}:${uri.port}...');
+      
+      final response = await request;
+      
+      final elapsed = DateTime.now().difference(startTime).inSeconds;
+      print('[AI Worker] [T:${elapsed}s] Got response from server');
+      print('[AI Worker] [T:${elapsed}s] Status code: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        print('[AI Worker] [T:${elapsed}s] ✓✓✓ SUCCESS ✓✓✓');
+        print('[AI Worker] [T:${elapsed}s] Report $reportId sent to AI worker');
+        print('[AI Worker] [T:${elapsed}s] Response body: ${response.body.length} chars');
+        print('[AI Worker] ═══════════════════════════════════════════════════════');
       } else {
-        print('[AI Worker] Success for report $reportId');
+        print('[AI Worker] [T:${elapsed}s] ✗ FAILED - Status ${response.statusCode}');
+        print('[AI Worker] Error response: ${response.body}');
+        print('[AI Worker] ═══════════════════════════════════════════════════════');
       }
+    } on TimeoutException catch (e) {
+      print('[AI Worker] ✗ TIMEOUT: $e');
+      print('[AI Worker] The server took too long to respond');
+      print('[AI Worker] This could mean:');
+      print('[AI Worker]   1. AI worker is not running (python main.py)');
+      print('[AI Worker]   2. Network connection is unstable');
+      print('[AI Worker]   3. Firewall is blocking port 8000');
+      print('[AI Worker] ═══════════════════════════════════════════════════════');
     } catch (e) {
-      print('[AI Worker] Failed to call: \$e');
+      print('[AI Worker] ✗ CONNECTION ERROR: $e');
+      print('[AI Worker] Failed to reach: ${AppConstants.aiWorkerUrl}');
+      print('[AI Worker] Troubleshooting:');
+      print('[AI Worker]   1. Check backend is running: python main.py');
+      print('[AI Worker]   2. Check laptop IPv4: ipconfig (should be 10.183.62.19)');
+      print('[AI Worker]   3. Phone and laptop on same WiFi');
+      print('[AI Worker]   4. Windows Firewall allows port 8000');
+      print('[AI Worker] ═══════════════════════════════════════════════════════');
     }
   }
 

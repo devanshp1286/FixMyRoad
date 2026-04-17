@@ -21,6 +21,9 @@ dependencies:
   geolocator: ^12.0.0
   geocoding: ^3.0.0
 
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
+
   # Camera & images
   image_picker: ^1.1.2
   image: ^4.2.0

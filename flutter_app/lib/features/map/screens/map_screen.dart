@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/theme.dart';
@@ -16,11 +17,11 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  GoogleMapController? _mapController;
-  Set<Marker>  _markers     = {};
-  bool         _mapReady    = false;
-  bool         _loading     = true;
-  String       _statusMsg   = 'Loading map...';
+  final MapController _mapController = MapController();
+
+  List<Marker> _markers   = [];
+  bool         _loading   = true;
+  String       _statusMsg = 'Loading map...';
   Position?    _myPosition;
 
   @override
@@ -29,14 +30,7 @@ class _MapScreenState extends State<MapScreen> {
     _init();
   }
 
-  @override
-  void dispose() {
-    _mapController?.dispose();
-    super.dispose();
-  }
-
   Future<void> _init() async {
-    // Run location + reports in parallel
     await Future.wait([_getMyLocation(), _loadReports()]);
   }
 
@@ -56,14 +50,12 @@ class _MapScreenState extends State<MapScreen> {
           timeLimit: const Duration(seconds: 10),
         );
       } catch (_) {
-        // Fall back to last known
         pos = await Geolocator.getLastKnownPosition();
       }
 
       if (pos == null || !mounted) return;
       setState(() => _myPosition = pos);
 
-      // Move camera if map is already ready
       _animateTo(LatLng(pos.latitude, pos.longitude), 15);
     } catch (e) {
       debugPrint('Location: $e');
@@ -72,39 +64,51 @@ class _MapScreenState extends State<MapScreen> {
 
   // ── Load pothole markers ─────────────────────────────────────────────
   Future<void> _loadReports() async {
-    if (mounted) setState(() { _loading = true; _statusMsg = 'Loading potholes...'; });
+    if (mounted) {
+      setState(() {
+        _loading   = true;
+        _statusMsg = 'Loading potholes...';
+      });
+    }
+
     try {
       final data = await Supabase.instance.client
           .from('reports')
-          .select('id, latitude, longitude, status, address, ai_results(severity)')
+          .select(
+              'id, latitude, longitude, status, address, ai_results(severity)')
           .neq('status', 'rejected')
           .order('submitted_at', ascending: false)
           .limit(500);
 
-      final list   = data as List;
-      final markers = <Marker>{};
+      final list    = data as List;
+      final markers = <Marker>[];
 
       for (final r in list) {
-        final lat = (r['latitude']  as num?)?.toDouble();
+        final lat = (r['latitude'] as num?)?.toDouble();
         final lng = (r['longitude'] as num?)?.toDouble();
         if (lat == null || lng == null) continue;
 
         final ai       = r['ai_results'];
         final severity = (ai is Map ? ai['severity'] as String? : null) ?? 'shallow';
-        final id       = r['id']      as String;
-        final addr     = r['address'] as String?
-            ?? '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
+        final id       = r['id'] as String;
+        final addr     = r['address'] as String? ??
+            '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
 
-        markers.add(Marker(
-          markerId: MarkerId(id),
-          position: LatLng(lat, lng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(_hue(severity)),
-          infoWindow: InfoWindow(
-            title: '${_label(severity)} pothole',
-            snippet: addr,
-            onTap: widget.publicMode ? null : () => context.push('/reports/$id'),
+        markers.add(
+          Marker(
+            width: 40,
+            height: 40,
+            point: LatLng(lat, lng),
+            child: GestureDetector(
+              onTap: widget.publicMode ? null : () => context.push('/reports/$id'),
+              child: Icon(
+                Icons.location_on,
+                color: _color(severity),
+                size: 32,
+              ),
+            ),
           ),
-        ));
+        );
       }
 
       if (!mounted) return;
@@ -118,24 +122,21 @@ class _MapScreenState extends State<MapScreen> {
 
       // If no GPS yet, zoom to first marker so user can see something
       if (_myPosition == null && markers.isNotEmpty) {
-        _animateTo(markers.first.position, 14);
+        _animateTo(markers.first.point, 14);
       }
     } catch (e) {
       debugPrint('Map load error: $e');
-      if (mounted) setState(() {
-        _loading   = false;
-        _statusMsg = 'Could not load potholes. Pull to refresh.';
-      });
+      if (mounted) {
+        setState(() {
+          _loading   = false;
+          _statusMsg = 'Could not load potholes. Pull to refresh.';
+        });
+      }
     }
   }
 
   void _animateTo(LatLng target, double zoom) {
-    if (_mapController == null) return;
-    _mapController!.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: zoom),
-      ),
-    );
+    _mapController.move(target, zoom);
   }
 
   void _goToMyLocation() {
@@ -146,25 +147,37 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  double _hue(String s) {
+  // Map hue (severity) → color for OSM markers
+  Color _color(String s) {
     switch (s) {
-      case 'deep':     return BitmapDescriptor.hueRed;
-      case 'moderate': return BitmapDescriptor.hueOrange;
-      default:         return BitmapDescriptor.hueGreen;
+      case 'deep':
+        return AppTheme.deep;
+      case 'moderate':
+        return AppTheme.moderate;
+      default:
+        return AppTheme.shallow;
     }
   }
 
   String _label(String s) {
     switch (s) {
-      case 'deep':     return 'Deep';
-      case 'moderate': return 'Moderate';
-      default:         return 'Shallow';
+      case 'deep':
+        return 'Deep';
+      case 'moderate':
+        return 'Moderate';
+      default:
+        return 'Shallow';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    final initialCenter = _myPosition != null
+        ? LatLng(_myPosition!.latitude, _myPosition!.longitude)
+        : const LatLng(AppConstants.defaultLat, AppConstants.defaultLng);
+    final initialZoom = _myPosition != null ? 14.0 : 5.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -189,107 +202,101 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ],
       ),
-      body: Stack(children: [
-
-        // ── Google Map ───────────────────────────────────────────────
-        GoogleMap(
-          onMapCreated: (controller) async {
-            _mapController = controller;
-            setState(() => _mapReady = true);
-            // Small delay so the map tiles render before animating
-            await Future.delayed(const Duration(milliseconds: 400));
-            if (!mounted) return;
-            if (_myPosition != null) {
-              _animateTo(
-                  LatLng(_myPosition!.latitude, _myPosition!.longitude), 15);
-            } else if (_markers.isNotEmpty) {
-              _animateTo(_markers.first.position, 14);
-            }
-          },
-          // Start at device location if known, else India centre
-          initialCameraPosition: CameraPosition(
-            target: _myPosition != null
-                ? LatLng(_myPosition!.latitude, _myPosition!.longitude)
-                : const LatLng(AppConstants.defaultLat, AppConstants.defaultLng),
-            zoom: _myPosition != null ? 14 : 5,
+      body: Stack(
+        children: [
+          // ── OpenStreetMap via flutter_map ──────────────────────────
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: initialCenter,
+              initialZoom: initialZoom,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.flutter_app',
+              ),
+              MarkerLayer(markers: _markers),
+            ],
           ),
-          markers: _markers,
-          myLocationEnabled: true,
-          myLocationButtonEnabled: false,
-          mapToolbarEnabled: true,
-          zoomControlsEnabled: true,
-          compassEnabled: true,
-        ),
 
-        // ── Status bar ───────────────────────────────────────────────
-        Positioned(
-          top: 10,
-          left: 12,
-          right: 12,
-          child: Material(
-            elevation: 2,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              child: Row(children: [
-                if (_loading)
-                  const SizedBox(
-                    width: 14, height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else
-                  Icon(
-                    _markers.isEmpty
-                        ? Icons.info_outline
-                        : Icons.location_on,
-                    size: 16,
-                    color: theme.colorScheme.primary,
-                  ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(_statusMsg,
-                      style: const TextStyle(fontSize: 13)),
-                ),
-                if (_markers.isNotEmpty && !_loading)
-                  GestureDetector(
-                    onTap: () => _animateTo(_markers.first.position, 14),
-                    child: Text('Show pins',
-                        style: TextStyle(
+          // ── Status bar ────────────────────────────────────────────
+          Positioned(
+            top: 10,
+            left: 12,
+            right: 12,
+            child: Material(
+              elevation: 2,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                child: Row(
+                  children: [
+                    if (_loading)
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      Icon(
+                        _markers.isEmpty
+                            ? Icons.info_outline
+                            : Icons.location_on,
+                        size: 16,
+                        color: theme.colorScheme.primary,
+                      ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child:
+                          Text(_statusMsg, style: const TextStyle(fontSize: 13)),
+                    ),
+                    if (_markers.isNotEmpty && !_loading)
+                      GestureDetector(
+                        onTap: () => _animateTo(_markers.first.point, 14),
+                        child: Text(
+                          'Show pins',
+                          style: TextStyle(
                             fontSize: 12,
                             color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w600)),
-                  ),
-              ]),
-            ),
-          ),
-        ),
-
-        // ── Legend ───────────────────────────────────────────────────
-        Positioned(
-          bottom: widget.publicMode ? 20 : 110,
-          right: 12,
-          child: Material(
-            elevation: 2,
-            borderRadius: BorderRadius.circular(10),
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  _LegendDot(color: AppTheme.deep,     label: 'Deep'),
-                  SizedBox(height: 5),
-                  _LegendDot(color: AppTheme.moderate, label: 'Moderate'),
-                  SizedBox(height: 5),
-                  _LegendDot(color: AppTheme.shallow,  label: 'Shallow'),
-                ],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      ]),
 
-      // ── FABs ─────────────────────────────────────────────────────────
+          // ── Legend ────────────────────────────────────────────────
+          Positioned(
+            bottom: widget.publicMode ? 20 : 110,
+            right: 12,
+            child: Material(
+              elevation: 2,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    _LegendDot(color: AppTheme.deep, label: 'Deep'),
+                    SizedBox(height: 5),
+                    _LegendDot(color: AppTheme.moderate, label: 'Moderate'),
+                    SizedBox(height: 5),
+                    _LegendDot(color: AppTheme.shallow, label: 'Shallow'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+
+      // ── FABs ─────────────────────────────────────────────────────
       floatingActionButton: widget.publicMode
           ? null
           : Column(
@@ -315,7 +322,7 @@ class _MapScreenState extends State<MapScreen> {
 }
 
 class _LegendDot extends StatelessWidget {
-  final Color  color;
+  final Color color;
   final String label;
   const _LegendDot({required this.color, required this.label});
 
@@ -324,7 +331,8 @@ class _LegendDot extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 11, height: 11,
+            width: 11,
+            height: 11,
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 6),

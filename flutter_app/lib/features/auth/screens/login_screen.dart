@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../../shared/services/supabase_service.dart';
 
@@ -28,21 +29,50 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
+    
+    // Check connectivity first
+    try {
+      final connectivity = await Connectivity().checkConnectivity();
+      if (connectivity == ConnectivityResult.none) {
+        setState(() => _error = 'No internet connection. Check your WiFi/mobile data.');
+        return;
+      }
+    } catch (e) {
+      print('[Login] Connectivity check failed: $e');
+    }
+    
     setState(() { _loading = true; _error = null; });
     try {
+      print('[Login] Attempting login for ${_emailCtrl.text.trim()}...');
       final service = ref.read(supabaseServiceProvider);
+      
+      // Add timeout to prevent hanging indefinitely
       final res = await service.signInWithEmail(
-          _emailCtrl.text.trim(), _passCtrl.text);
+          _emailCtrl.text.trim(), _passCtrl.text)
+        .timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw Exception('Login timeout - server not responding'),
+        );
 
       if (res.user == null) {
+        print('[Login] User is null after auth');
         setState(() => _error = 'Login failed. Please try again.');
         return;
       }
+      
+      print('[Login] ✓ Auth successful for ${res.user!.email}');
       if (!mounted) return;
 
       // Try to get profile — if missing, create it then proceed
       try {
-        final profile = await service.getProfile(res.user!.id);
+        print('[Login] Fetching profile...');
+        final profile = await service.getProfile(res.user!.id)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw Exception('Profile fetch timeout'),
+          );
+        
+        print('[Login] ✓ Profile found: ${profile.role}');
         if (!mounted) return;
         if (profile.isAdmin) {
           context.go('/admin');
@@ -51,22 +81,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         } else {
           context.go('/home');
         }
-      } catch (_) {
+      } catch (profileError) {
+        print('[Login] Profile fetch error: $profileError');
+        print('[Login] Creating profile...');
         await service.createProfileIfMissing(
             res.user!.id, _emailCtrl.text.trim());
+        print('[Login] ✓ Profile created');
         if (mounted) context.go('/home');
       }
     } catch (e) {
+      print('[Login] Login error: $e');
       final msg = e.toString().toLowerCase();
+      
       if (msg.contains('invalid login') || msg.contains('invalid credentials')) {
         setState(() => _error = 'Wrong email or password.');
       } else if (msg.contains('email not confirmed')) {
         setState(() => _error =
-            'Email not confirmed. Disable email confirmation in Supabase Dashboard → Auth → Settings.');
+            'Email not confirmed. Check your email or disable email confirmation in Supabase.');
       } else if (msg.contains('rate limit')) {
         setState(() => _error = 'Too many attempts. Wait 1 minute and try again.');
+      } else if (msg.contains('timeout')) {
+        setState(() => _error = 'Connection timeout. Server not responding.');
+      } else if (msg.contains('socket') || msg.contains('connection')) {
+        setState(() => _error = 'Network error. Check internet connection.\n\nURL: ${msg.split('uri=').last.split(',').first}');
+      } else if (msg.contains('software caused connection abort') || msg.contains('errno = 103')) {
+        setState(() => _error = 'Connection reset by server. Check Supabase credentials.');
       } else {
-        setState(() => _error = 'Error: ${e.toString()}');
+        setState(() => _error = 'Error: ${e.toString().split('\n').first}');
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -187,6 +228,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     child: const Text('View map without signing in'),
                   ),
                 ),
+                const SizedBox(height: 16),
+                if (_loading)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(
+                        'Connecting to server...',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

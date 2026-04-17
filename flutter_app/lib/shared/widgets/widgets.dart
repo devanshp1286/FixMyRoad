@@ -87,7 +87,13 @@ class StatusChip extends StatelessWidget {
 class ReportCard extends StatelessWidget {
   final Report report;
   final VoidCallback onTap;
-  const ReportCard({super.key, required this.report, required this.onTap});
+  final bool showCost;
+  const ReportCard({
+    super.key, 
+    required this.report, 
+    required this.onTap,
+    this.showCost = false,  // Hide cost by default (for citizens)
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +161,7 @@ class ReportCard extends StatelessWidget {
                       _timeAgo(report.submittedAt),
                       style: theme.textTheme.bodySmall,
                     ),
-                    if (report.aiResult?.repairCostMax != null) ...[
+                    if (showCost && report.aiResult?.repairCostMax != null) ...[
                       const Spacer(),
                       Text(
                         report.aiResult!.costRangeLabel,

@@ -32,7 +32,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     try {
       final profile = await ref
           .read(supabaseServiceProvider)
-          .getProfile(session.user.id);
+          .getProfile(session.user.id)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw Exception('Profile fetch timeout'),
+          );
 
       if (!mounted) return;
 
@@ -44,7 +48,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       } else {
         context.go('/home');
       }
-    } catch (_) {
+    } catch (e) {
+      print('[Splash] Profile error: $e');
+      // If profile fetch fails, go to login
       if (mounted) context.go('/login');
     }
   }

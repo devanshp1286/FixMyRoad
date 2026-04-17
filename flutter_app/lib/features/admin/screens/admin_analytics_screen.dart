@@ -270,10 +270,10 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
                             ? const Center(child: Text('No data'))
                             : BarChart(BarChartData(
                                 alignment: BarChartAlignment.spaceAround,
-                                maxY: (_weeklyData
+                                maxY: _weeklyData.isEmpty ? 5 : (_weeklyData
                                         .map((d) => (d['count'] as int)
                                             .toDouble())
-                                        .reduce((a, b) => a > b ? a : b) +
+                                        .fold(0.0, (a, b) => a > b ? a : b) +
                                     1),
                                 barTouchData: BarTouchData(enabled: false),
                                 titlesData: FlTitlesData(

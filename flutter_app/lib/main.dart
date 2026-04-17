@@ -9,12 +9,27 @@ import 'shared/services/notification_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Supabase.initialize(
-    url: AppConstants.supabaseUrl,
-    anonKey: AppConstants.supabaseAnonKey,
-  );
+  print('[Init] Starting app initialization...');
+  print('[Init] Supabase URL: ${AppConstants.supabaseUrl}');
+  
+  try {
+    await Supabase.initialize(
+      url: AppConstants.supabaseUrl,
+      anonKey: AppConstants.supabaseAnonKey,
+    );
+    print('[Init] ✓ Supabase initialized');
+  } catch (e) {
+    print('[Init] ✗ Supabase init failed: $e');
+    rethrow;
+  }
 
-  await NotificationService.initializeLocal();
+  try {
+    await NotificationService.initializeLocal();
+    print('[Init] ✓ Notifications initialized');
+  } catch (e) {
+    print('[Init] ✗ Notification init failed: $e');
+  }
 
+  print('[Init] App starting...');
   runApp(const ProviderScope(child: FixMyRoadApp()));
 }
