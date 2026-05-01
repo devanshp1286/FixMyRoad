@@ -833,8 +833,8 @@ ai_worker/venv/
 
 | Name | Enrollment No. | Role |
 |---|---|---|
-| Tirth Goti | 202302626010087 | AI Pipeline + Backend |
-| Devansh Prajapati | 202302626010102 | Flutter App + UI/UX |
+| Tirth Goti | 202302626010087 | Flutter App + UI/UX |
+| Devansh Prajapati | 202302626010102 | AI Pipeline + Backend |
 | Ujas Dubal | 202302626010148 | Database + Supabase |
 | Jaimin Solanki | 202302626010152 | Testing + Documentation |
 
